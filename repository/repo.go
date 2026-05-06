@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
 )
 
 type UserResponse struct {
@@ -20,6 +19,7 @@ type UserResponse struct {
 	Password   string
 	Id         string
 	Created_at time.Time
+	Admin      bool
 }
 
 type ProductResponse struct {
@@ -30,7 +30,6 @@ type ProductResponse struct {
 	Created_at   time.Time
 	Updated_at   time.Time
 	Price        int
-	Cost         int
 	Description  string
 }
 
@@ -43,9 +42,6 @@ type CartResponse struct {
 var NRA = errors.New("No rows affected prolem with entry")
 
 func Connect(ctx context.Context) (*pgxpool.Pool, error) {
-	if err := godotenv.Load(); err != nil {
-		log.Panicf("Problem loading from .env\n%v", err)
-	}
 	connString := os.Getenv("DB_URL")
 	pool, err := pgxpool.New(ctx, connString)
 	if err != nil {
@@ -73,6 +69,64 @@ func AddUser(ctx context.Context, pool *pgxpool.Pool, info ...any) error {
 		return err
 	}
 	log.Println("User added")
+	return nil
+}
+
+func AddUser_V2(ctx context.Context, pool *pgxpool.Pool, instructions map[string]any) error {
+	cmds := make([]string, 0)
+	values := make([]any, 0)
+	parameters := make([]string, 0)
+	counter := 1
+
+	for key, value := range instructions {
+		cmds = append(cmds, key)
+		values = append(values, value)
+		parameters = append(parameters, fmt.Sprintf("$%d", counter))
+		counter++
+	}
+
+	cmd := strings.Join(cmds, ",")
+	parameter := strings.Join(parameters, ",")
+
+	sqlString := fmt.Sprintf("INSERT INTO users (%s) VALUES (%s)", cmd, parameter)
+
+	cmdtag, err := pool.Exec(ctx, sqlString, values...)
+	if err != nil {
+		return err
+	}
+	if cmdtag.RowsAffected() == 0 {
+		return NRA
+	}
+
+	return nil
+}
+
+func AddProduct_V2(ctx context.Context, pool *pgxpool.Pool, instructions map[string]any) error {
+	cmds := make([]string, 0)
+	values := make([]any, 0)
+	parameters := make([]string, 0)
+	counter := 1
+
+	for key, value := range instructions {
+		cmds = append(cmds, key)
+		values = append(values, value)
+		parameters = append(parameters, fmt.Sprintf("$%d", counter))
+		counter++
+	}
+
+	cmd := strings.Join(cmds, ",")
+	parameter := strings.Join(parameters, ",")
+
+	sqlString := fmt.Sprintf("INSERT INTO products (%s) VALUES (%s)", cmd, parameter)
+
+	cmdtag, err := pool.Exec(ctx, sqlString, values...)
+	if err != nil {
+		return err
+	}
+	if cmdtag.RowsAffected() == 0 {
+		return NRA
+	}
+
 	return nil
 }
 
@@ -120,7 +174,7 @@ func FindProduct_V2(ctx context.Context, pool *pgxpool.Pool, category string, in
 func ListUsers(ctx context.Context, pool *pgxpool.Pool, category string, info any) ([]UserResponse, error) {
 	var response UserResponse
 	responselist := make([]UserResponse, 0)
-	query := fmt.Sprintf("SELECT name, age, email, password, id, created_at FROM users WHERE %s = $1", category)
+	query := fmt.Sprintf("SELECT name, age, email, password, id, created_at, admin FROM users WHERE %s = $1", category)
 
 	rows, err := pool.Query(ctx, query, info)
 	if err != nil {
@@ -128,7 +182,7 @@ func ListUsers(ctx context.Context, pool *pgxpool.Pool, category string, info an
 	}
 
 	for rows.Next() {
-		err = rows.Scan(&response.Name, &response.Age, &response.Email, &response.Password, &response.Id, &response.Created_at)
+		err = rows.Scan(&response.Name, &response.Age, &response.Email, &response.Password, &response.Id, &response.Created_at, &response.Admin)
 		if err != nil {
 			return []UserResponse{}, err
 		}
@@ -221,7 +275,7 @@ func DeleteUser(ctx context.Context, pool *pgxpool.Pool, id string) error {
 }
 
 func DeleteProduct(ctx context.Context, pool *pgxpool.Pool, id string) error {
-	if cmdtag, err := pool.Exec(ctx, "DELETE FROM users WHERE id = $1", id); err != nil ||
+	if cmdtag, err := pool.Exec(ctx, "DELETE FROM products WHERE id = $1", id); err != nil ||
 		cmdtag.RowsAffected() == 0 {
 		return err
 	}
@@ -279,13 +333,32 @@ func FindCart(ctx context.Context, pool *pgxpool.Pool, user_id string) ([]CartRe
 	return responselist, nil
 }
 
-func UpdateCart(ctx context.Context, pool *pgxpool.Pool, user_id, product_id string) error {
-	cmdtag, err := pool.Exec(ctx, "UPDATE cart SET quantity = quantity + 1 WHERE user_id = $1 AND product_id = $2", user_id, product_id)
+func UpdateCart(ctx context.Context, pool *pgxpool.Pool, user_id, product_id string, operation int) error {
+	var sqlstring string
+
+	switch operation {
+	case 0:
+		sqlstring = "UPDATE cart SET quantity = CASE WHEN quantity > 0 THEN quantity - 1 ELSE 0 WHERE user_id = $1 AND product_id = $2"
+	case 1:
+		sqlstring = "UPDATE cart SET quantity = quantity + 1 WHERE user_id = $1 AND product_id = $2"
+	default:
+		return errors.New("Invalid operation: Operations must be 1 or 0")
+	}
+
+	cmdtag, err := pool.Exec(ctx, sqlstring, user_id, product_id)
 	if err != nil {
 		return err
 	}
 	if cmdtag.RowsAffected() == 0 {
 		return NRA
+	}
+	return nil
+}
+
+func DeleteCart(ctx context.Context, pool *pgxpool.Pool, user_id, product_id string) error {
+	if cmdtag, err := pool.Exec(ctx, "DELETE FROM cart WHERE user_id = $1 AND product_id = $2", user_id, product_id); err != nil ||
+		cmdtag.RowsAffected() == 0 {
+		return err
 	}
 	return nil
 }

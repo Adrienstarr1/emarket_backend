@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"eboox/auth"
+	"eboox/order"
 	product "eboox/products"
 	"eboox/repository"
 	user "eboox/users"
@@ -14,31 +16,39 @@ import (
 	"github.com/joho/godotenv"
 )
 
-var (
-	_           = godotenv.Load()
-	connString  = os.Getenv("DB_URL")
-	pool, _     = repository.Connect(context.Background())
-	UserHandler = user.UserHandler{
-		Pool: pool,
-	}
-	ProductHandler = product.ProductHandler{
-		Pool: pool,
-	}
-)
-
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pool, err := repository.Connect(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	UserHandler := user.UserHandler{
+		Pool: pool,
+	}
+	ProductHandler := product.ProductHandler{
+		Pool: pool,
+	}
+	OrderHandler := order.OrderHandler{
+		Pool: pool,
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /user/signin", UserHandler.SiginHandler)
 	mux.HandleFunc("POST /user/login", UserHandler.LoginHandler)
-	mux.HandleFunc("POST /product/create", user.Auth(ProductHandler.CreateProductHandler))
-	mux.HandleFunc("PUT /product/update/{id}", user.Auth(ProductHandler.UpdateProductHandler))
-	mux.HandleFunc("GET /product/{id}", user.Auth(ProductHandler.FindProduct))
-	mux.HandleFunc("GET /user/{id}/{info}", user.Auth(UserHandler.UserInfoHandler))
-	mux.HandleFunc("GET /user/{id}", user.Auth(UserHandler.UserInfoHandler))
-	mux.HandleFunc("GET /user/list/{name}", user.Auth(UserHandler.ListUsersHandler))
-	mux.HandleFunc("PUT /user/update/{id}", user.Auth(UserHandler.UpdateUserhandler))
-	mux.HandleFunc("DELETE /user/delete/{id}", user.Auth(UserHandler.DeleteUserHandler))
-	mux.HandleFunc("POST /user/addcart/{user_id}/{product_id}", user.Auth(UserHandler.AddToCartHandler))
+	mux.HandleFunc("POST /product/create", auth.Auth(ProductHandler.CreateProductHandler))
+	mux.HandleFunc("PATCH /product/update/{id}", auth.Auth(ProductHandler.UpdateProductHandler))
+	mux.HandleFunc("GET /product/{id}", auth.Auth(ProductHandler.FindProduct))
+	mux.HandleFunc("GET /user/{id}/{info}", auth.Auth(UserHandler.UserInfoHandler))
+	mux.HandleFunc("GET /user/{id}", auth.Auth(UserHandler.UserInfoHandler))
+	mux.HandleFunc("GET /user/list/{name}", auth.Auth(UserHandler.ListUsersHandler))
+	mux.HandleFunc("PATCH /user/update", auth.Auth(UserHandler.UpdateUserhandler))
+	mux.HandleFunc("DELETE /user/delete", auth.Auth(UserHandler.DeleteUserHandler))
+	mux.HandleFunc("POST /user/addcart/{product_id}", auth.Auth(OrderHandler.AddToCartHandler))
+	mux.HandleFunc("PATCH /user/makeadmin/{id}", auth.Auth(UserHandler.MakeUserAdminHandler))
 
 	server := &http.Server{
 		Addr:         ":8080",
@@ -52,7 +62,7 @@ func main() {
 	signal.Notify(stopchan, os.Interrupt)
 	go func() {
 		log.Println("Listening on ...8080")
-		err := server.ListenAndServe()
+		err = server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server failed to start: %v", err)
 		}
@@ -62,7 +72,7 @@ func main() {
 	defer cancel()
 	defer pool.Close()
 
-	err := server.Shutdown(ctx)
+	err = server.Shutdown(ctx)
 	if err != nil {
 		log.Fatalf("Server shutting Failed %v", err)
 	}
