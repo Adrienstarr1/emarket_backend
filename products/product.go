@@ -38,8 +38,11 @@ func (h *ProductHandler) CreateProductHandler(w http.ResponseWriter, r *http.Req
 
 	product.Id = uuid.New().String()
 	product.User_Id = user.Id
-	repo.AddProduct(r.Context(), h.Pool, product.Id, product.Product_name, product.Quantity, product.User_Id, product.Price, product.Description)
-
+	err = repo.AddProduct(r.Context(), h.Pool, product.Id, product.Product_name, product.Quantity, product.User_Id, product.Price, product.Description)
+	if err != nil {
+		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(product)
@@ -54,8 +57,9 @@ func (h *ProductHandler) FindProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response, err := repo.FindProduct_V2(r.Context(), h.Pool, "id", id)
-	if err != nil {
+	if err != nil || len(response) == 0 {
 		http.Error(w, "ERROR\nCant retrive product", http.StatusInternalServerError)
+		log.Println(err)
 		return
 	}
 
@@ -68,9 +72,10 @@ func (h *ProductHandler) FindProduct(w http.ResponseWriter, r *http.Request) {
 		Description:  response[0].Description,
 	}
 
-	json.NewEncoder(w).Encode(product)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(product)
+
 }
 
 func (h *ProductHandler) UpdateProductHandler(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +90,7 @@ func (h *ProductHandler) UpdateProductHandler(w http.ResponseWriter, r *http.Req
 	err := json.NewDecoder(r.Body).Decode(&instructions)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 
 	err = repo.UpdateProduct_V2(r.Context(), h.Pool, id, instructions)
@@ -94,8 +100,9 @@ func (h *ProductHandler) UpdateProductHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode("Updated")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("Updated")
+
 }
 
 func (h *ProductHandler) DeleteProductHandler(w http.ResponseWriter, r *http.Request) {
@@ -111,6 +118,7 @@ func (h *ProductHandler) DeleteProductHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode("Deleted")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("Deleted")
+
 }

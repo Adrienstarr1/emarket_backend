@@ -13,53 +13,48 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func (h *UserHandler) SiginHandler(w http.ResponseWriter, r *http.Request) {
-	var instructions map[string]any
-	err := json.NewDecoder(r.Body).Decode(&instructions)
-
-	acceptedinputs := []string{
-		"name",
-		"age",
-		"email",
-		"password",
-	}
-
-	for key := range instructions {
-		if !slices.Contains(acceptedinputs, key) {
-			delete(instructions, key)
-		}
-	}
-
+func (h *UserHandler) SigninHandler(w http.ResponseWriter, r *http.Request) {
+	var request UserRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	instructions["id"] = uuid.New().String()
-	instructions["admin"] = false
-	instructions["created_at"] = time.Now()
-	hash, err := bcrypt.GenerateFromPassword([]byte(instructions["password"].(string)), bcrypt.DefaultCost)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	user := User{
+		UserRequest: request,
+		id:          uuid.NewString(),
+		created_at:  time.Now(),
+		admin:       false,
 	}
 
-	instructions["password"] = string(hash)
-
-	err = repo.AddUser_V2(r.Context(), h.Pool, instructions)
+	hash, err := bcrypt.GenerateFromPassword([]byte(user.UserRequest.Password), bcrypt.DefaultCost)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	ss := auth.CreateSS(instructions["name"].(string), instructions["id"].(string), instructions["email"].(string), instructions["admin"].(bool))
+	user.UserRequest.Password = string(hash)
 
-	w.Header().Set("Content-Type", "application/json")
+	err = repo.AddUser(r.Context(), h.Pool, user.id, user.UserRequest.Email, user.UserRequest.Age, user.UserRequest.Name, user.UserRequest.Password, user.admin)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ss, err := auth.CreateSS(user.UserRequest.Name, user.id, user.UserRequest.Email, user.admin)
+	if err != nil {
+		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
 	w.WriteHeader(http.StatusCreated)
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ss)
 }
 
 func (h *UserHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var input User
-	var user User
+	var user UserResponse
 	var found bool
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
@@ -85,11 +80,11 @@ func (h *UserHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		err = bcrypt.CompareHashAndPassword([]byte(response.Password), []byte(input.Password))
 		if err == nil {
 			found = true
-			user = User{
+			user = UserResponse{
 				Name:  response.Name,
 				Email: response.Email,
-				id:    response.Id,
-				admin: response.Admin,
+				Id:    response.Id,
+				Admin: response.Admin,
 			}
 		}
 	}
@@ -99,7 +94,11 @@ func (h *UserHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ss := auth.CreateSS(user.Name, user.id, user.Email, user.admin)
+	ss, err := auth.CreateSS(user.Name, user.Id, user.Email, user.Admin)
+	if err != nil {
+		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(ss)
@@ -122,8 +121,8 @@ func (h *UserHandler) UserInfoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := User{
-		id:    responses[0].Id,
+	user := UserResponse{
+		Id:    responses[0].Id,
 		Email: responses[0].Email,
 		Name:  responses[0].Name,
 		Age:   responses[0].Age,
@@ -131,6 +130,7 @@ func (h *UserHandler) UserInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 	info := r.PathValue("info")
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	switch info {
 	case "name":
 		json.NewEncoder(w).Encode(user.Name)
@@ -142,25 +142,24 @@ func (h *UserHandler) UserInfoHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(user)
 	}
 
-	w.WriteHeader(http.StatusOK)
-
 }
 
 func (h *UserHandler) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	if "name" == "" {
+	if name == "" {
 		http.Error(w, "Invalid url path", http.StatusBadRequest)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
 
 	list, err := repo.ListUsers(r.Context(), h.Pool, "name", name)
 	if err != nil {
 		http.Error(w, "ERROR:\n"+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(list)
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(list)
 }
 
 func (h *UserHandler) UpdateUserhandler(w http.ResponseWriter, r *http.Request) {
@@ -186,6 +185,7 @@ func (h *UserHandler) UpdateUserhandler(w http.ResponseWriter, r *http.Request) 
 		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		instructions["password"] = string(hash)
 	}
@@ -201,10 +201,12 @@ func (h *UserHandler) UpdateUserhandler(w http.ResponseWriter, r *http.Request) 
 		"created_at",
 	}
 
+	if user.Admin {
+		acceptedinputs = append(acceptedinputs, admininputs...)
+	}
+
 	for key := range instructions {
-		if !slices.Contains(acceptedinputs, key) && !user.Admin {
-			delete(instructions, key)
-		} else if !slices.Contains(admininputs, key) && user.Admin {
+		if !slices.Contains(acceptedinputs, key) {
 			delete(instructions, key)
 		}
 	}
@@ -216,8 +218,9 @@ func (h *UserHandler) UpdateUserhandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode("Updated")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("Updated")
+
 }
 
 func (h *UserHandler) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -229,8 +232,8 @@ func (h *UserHandler) DeleteUserHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode("Deleted")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("Deleted")
 }
 
 func (h *UserHandler) MakeUserAdminHandler(w http.ResponseWriter, r *http.Request) {

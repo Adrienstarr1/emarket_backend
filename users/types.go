@@ -7,16 +7,21 @@ import (
 )
 
 type User struct {
-	Name       string
-	Age        int
-	Email      string
-	Password   string
+	UserRequest
 	id         string
 	created_at time.Time
 	admin      bool
 }
 
 type UserResponse struct {
+	Id    string `json:"id"`
+	Name  string `json:"name"`
+	Age   int    `json:"age"`
+	Email string `json:"email"`
+	Admin bool   `json:"admin"`
+}
+
+type UserRequest struct {
 	Name     string `json:"name"`
 	Age      int    `json:"age"`
 	Email    string `json:"email"`

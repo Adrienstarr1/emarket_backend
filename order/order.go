@@ -24,7 +24,7 @@ func (h *OrderHandler) AddToCartHandler(w http.ResponseWriter, r *http.Request) 
 	instructions := make(map[string]any)
 	err := json.NewDecoder(r.Body).Decode(&instructions)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -61,8 +61,8 @@ func (h *OrderHandler) AddToCartHandler(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode("Created")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("Created")
 }
 
 func (h *OrderHandler) DeleteCartHandler(w http.ResponseWriter, r *http.Request) {
@@ -117,4 +117,8 @@ func (h *OrderHandler) DeleteCartHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "cart not found", http.StatusBadRequest)
 		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("Deleted")
 }

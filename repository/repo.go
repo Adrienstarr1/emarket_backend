@@ -45,7 +45,6 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	connString := os.Getenv("DB_URL")
 	pool, err := pgxpool.New(ctx, connString)
 	if err != nil {
-		log.Fatal("Unable to connect to database:", err)
 		return nil, err
 	}
 
@@ -57,13 +56,14 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 }
 
 func AddUser(ctx context.Context, pool *pgxpool.Pool, info ...any) error {
-	id := info[4]
-	email := info[2]
-	age := info[1]
-	name := info[0]
-	password := info[3]
+	id := info[0]
+	email := info[1]
+	age := info[2]
+	name := info[3]
+	password := info[4]
+	admin := info[5]
 
-	_, err := pool.Exec(ctx, "INSERT INTO users (id, email, age, name, password, created_at) VALUES ($1, $2, $3, $4, $5, $6)", id, email, age, name, password, time.Now())
+	_, err := pool.Exec(ctx, "INSERT INTO users (id, email, age, name, password, created_at, admin) VALUES ($1, $2, $3, $4, $5, $6, $7)", id, email, age, name, password, time.Now(), admin)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -158,6 +158,7 @@ func FindProduct_V2(ctx context.Context, pool *pgxpool.Pool, category string, in
 	if err != nil {
 		return []ProductResponse{}, err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		err = rows.Scan(&response.Id, &response.Product_name, &response.Quantity, &response.User_Id, &response.Price, &response.Description)
@@ -180,6 +181,7 @@ func ListUsers(ctx context.Context, pool *pgxpool.Pool, category string, info an
 	if err != nil {
 		return []UserResponse{}, err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		err = rows.Scan(&response.Name, &response.Age, &response.Email, &response.Password, &response.Id, &response.Created_at, &response.Admin)
@@ -267,17 +269,23 @@ func UpdateProduct_V2(ctx context.Context, pool *pgxpool.Pool, id string, instru
 }
 
 func DeleteUser(ctx context.Context, pool *pgxpool.Pool, id string) error {
-	if cmdtag, err := pool.Exec(ctx, "DELETE FROM users WHERE id = $1", id); err != nil ||
-		cmdtag.RowsAffected() == 0 {
+	cmdtag, err := pool.Exec(ctx, "DELETE FROM users WHERE id = $1", id)
+	if err != nil {
 		return err
+	}
+	if cmdtag.RowsAffected() == 0 {
+		return NRA
 	}
 	return nil
 }
 
 func DeleteProduct(ctx context.Context, pool *pgxpool.Pool, id string) error {
-	if cmdtag, err := pool.Exec(ctx, "DELETE FROM products WHERE id = $1", id); err != nil ||
-		cmdtag.RowsAffected() == 0 {
+	cmdtag, err := pool.Exec(ctx, "DELETE FROM products WHERE id = $1", id)
+	if err != nil {
 		return err
+	}
+	if cmdtag.RowsAffected() == 0 {
+		return NRA
 	}
 	return nil
 }
@@ -321,6 +329,7 @@ func FindCart(ctx context.Context, pool *pgxpool.Pool, user_id string) ([]CartRe
 	if err != nil {
 		return []CartResponse{}, err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		err = rows.Scan(&response.User_id, &response.Product_id, &response.Quantity)
@@ -338,7 +347,7 @@ func UpdateCart(ctx context.Context, pool *pgxpool.Pool, user_id, product_id str
 
 	switch operation {
 	case 0:
-		sqlstring = "UPDATE cart SET quantity = CASE WHEN quantity > 0 THEN quantity - 1 ELSE 0 WHERE user_id = $1 AND product_id = $2"
+		sqlstring = "UPDATE cart SET quantity = CASE WHEN quantity > 0 THEN quantity - 1 ELSE 0 END WHERE user_id = $1 AND product_id = $2 "
 	case 1:
 		sqlstring = "UPDATE cart SET quantity = quantity + 1 WHERE user_id = $1 AND product_id = $2"
 	default:

@@ -37,7 +37,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /user/signin", UserHandler.SiginHandler)
+	mux.HandleFunc("POST /user/signin", UserHandler.SigninHandler)
 	mux.HandleFunc("POST /user/login", UserHandler.LoginHandler)
 	mux.HandleFunc("POST /product/create", auth.Auth(ProductHandler.CreateProductHandler))
 	mux.HandleFunc("PATCH /product/update/{id}", auth.Auth(ProductHandler.UpdateProductHandler))

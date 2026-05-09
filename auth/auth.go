@@ -27,7 +27,7 @@ var (
 	Metadata     key = "katseye"
 )
 
-func CreateSS(name, id, email string, admin bool) string {
+func CreateSS(name, id, email string, admin bool) (string, error) {
 	claims := MyClaims{
 		User: User{
 			Id:    id,
@@ -41,9 +41,11 @@ func CreateSS(name, id, email string, admin bool) string {
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	ss, _ := token.SignedString(MySigningKey)
-
-	return ss
+	ss, err := token.SignedString(MySigningKey)
+	if err != nil {
+		return "", nil
+	}
+	return ss, nil
 }
 
 func Auth(next http.HandlerFunc) http.HandlerFunc {
@@ -55,7 +57,6 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-
 		token, err := jwt.ParseWithClaims(tokenString, &MyClaims{}, func(t *jwt.Token) (any, error) {
 			return MySigningKey, nil
 		})
@@ -64,6 +65,10 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 			if the signing key and the parsed token are like the same ok will e tru else you get an error and ok is false
 			the &myclaims kinda gives it the parameter its meant to splice the parsed info into
 		*/
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 		if claims, ok := token.Claims.(*MyClaims); ok && token.Valid {
 			ctx := context.WithValue(r.Context(), Metadata, claims.User)
 
