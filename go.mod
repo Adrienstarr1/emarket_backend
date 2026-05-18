@@ -1,4 +1,4 @@
-module eboox
+module e-market
 
 go 1.25.4
 

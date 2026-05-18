@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"e-market/model"
 	"net/http"
 	"os"
 	"strings"
@@ -12,14 +13,8 @@ import (
 
 type key string
 type MyClaims struct {
-	User
+	model.User
 	jwt.RegisteredClaims
-}
-type User struct {
-	Id    string
-	Name  string
-	Email string
-	Admin bool
 }
 
 var (
@@ -27,14 +22,9 @@ var (
 	Metadata     key = "katseye"
 )
 
-func CreateSS(name, id, email string, admin bool) (string, error) {
+func CreateSS(User model.User) (string, error) {
 	claims := MyClaims{
-		User: User{
-			Id:    id,
-			Name:  name,
-			Email: email,
-			Admin: admin,
-		},
+		User: User,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(28 * time.Hour)),
 			Issuer:    "Me!!!!!!!!!!!!",
@@ -74,7 +64,7 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 
 			next(w, r.WithContext(ctx))
 		} else {
-			http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+			http.Error(w, "Unauthorized: token invalid", http.StatusUnauthorized)
 			return
 		}
 	}

@@ -2,11 +2,10 @@ package main
 
 import (
 	"context"
-	"eboox/auth"
-	"eboox/order"
-	product "eboox/products"
-	"eboox/repository"
-	user "eboox/users"
+	"e-market/auth"
+	"e-market/handler"
+	"e-market/repo"
+	"e-market/service"
 	"log"
 	"net/http"
 	"os"
@@ -21,34 +20,32 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	pool, err := repository.Connect(context.Background())
+	pool, err := repo.Connect(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
-	UserHandler := user.UserHandler{
-		Pool: pool,
-	}
-	ProductHandler := product.ProductHandler{
-		Pool: pool,
-	}
-	OrderHandler := order.OrderHandler{
-		Pool: pool,
+
+	Handler := handler.Handler{
+		Service: service.Service{
+			Repo: repo.Repo{
+				Pool: pool,
+			},
+		},
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /user/signin", UserHandler.SigninHandler)
-	mux.HandleFunc("POST /user/login", UserHandler.LoginHandler)
-	mux.HandleFunc("POST /product/create", auth.Auth(ProductHandler.CreateProductHandler))
-	mux.HandleFunc("PATCH /product/update/{id}", auth.Auth(ProductHandler.UpdateProductHandler))
-	mux.HandleFunc("GET /product/{id}", auth.Auth(ProductHandler.FindProduct))
-	mux.HandleFunc("GET /user/{id}/{info}", auth.Auth(UserHandler.UserInfoHandler))
-	mux.HandleFunc("GET /user/{id}", auth.Auth(UserHandler.UserInfoHandler))
-	mux.HandleFunc("GET /user/list/{name}", auth.Auth(UserHandler.ListUsersHandler))
-	mux.HandleFunc("PATCH /user/update", auth.Auth(UserHandler.UpdateUserhandler))
-	mux.HandleFunc("DELETE /user/delete", auth.Auth(UserHandler.DeleteUserHandler))
-	mux.HandleFunc("POST /user/addcart/{product_id}", auth.Auth(OrderHandler.AddToCartHandler))
-	mux.HandleFunc("PATCH /user/makeadmin/{id}", auth.Auth(UserHandler.MakeUserAdminHandler))
+	mux.HandleFunc("POST /user/signin", Handler.SignupHandler)
+	mux.HandleFunc("POST /user/login", Handler.LoginHandler)
+	mux.HandleFunc("POST /product/create", auth.Auth(Handler.CreateProductHandler))
+	mux.HandleFunc("PATCH /product/update/{id}", auth.Auth(Handler.UpdateProductHandler))
+	mux.HandleFunc("GET /product/{id}", auth.Auth(Handler.GetProduct))
+	mux.HandleFunc("GET /user/{id}/{info}", auth.Auth(Handler.UserInfoHandler))
+	mux.HandleFunc("GET /user/{id}", auth.Auth(Handler.UserInfoHandler))
+	mux.HandleFunc("GET /user/list/{name}", auth.Auth(Handler.ListUsersHandler))
+	mux.HandleFunc("PATCH /user/update", auth.Auth(Handler.UpdateUserhandler))
+	mux.HandleFunc("DELETE /user/delete", auth.Auth(Handler.DeleteUserHandler))
+	mux.HandleFunc("POST /user/addcart/{product_id}", auth.Auth(Handler.AddToCartHandler))
+	mux.HandleFunc("PATCH /user/makeadmin/{id}", auth.Auth(Handler.MakeUserAdminHandler))
 
 	server := &http.Server{
 		Addr:         ":8080",
